@@ -1,8 +1,14 @@
 """
 pip install tensorflow tensorflow_datasets jax flax numpy optax
 git clone https://github.com/google/maxtext.git
-sudo apt update && sudo apt upgrade
-bash maxtext/setup.sh
+# sudo apt update --quiet && sudo apt upgrade --quiet
+# remove non-interactive option in setup.sh.
+cd maxtext
+bash setup.sh
+
+git config --global user.email "victor.barr@yahoo.com"
+git config --global user.name "Oblivour"
+git clone https://github.com/Obliviour/HighPerfLLMs2024.git
 """
 
 import tensorflow as tf
@@ -39,6 +45,7 @@ LEARNING_RATE = 1e-3
 # https://flax.readthedocs.io/en/latest/guides/flax_fundamentals/flax_basics.html#module-basics
 
 
+# This is na example of us creating an embedded and applying it to our input batch.
 class OurSimpleModel(nn.Module):
     @nn.compact
     def __call__(self, x):
@@ -48,12 +55,16 @@ class OurSimpleModel(nn.Module):
         x = embedding[x]  ## OUTPUT should be [BATCH, SEQUENCE, EMBED]
         return x
 
+# This is an example of creating a first layer convering the embedding into
+# the first layer.
 class NNModel(nn.Module):
     @nn.compact
     def __call__(self, x):
         embedding = self.param(
             "embedded", nn.initializers.normal(1), (VOCAB_DIM, EMBED_DIM), jnp.float32
         )
+        # I don't get the purpose of brackets in what math is being done but
+        # [BATCH, SEQUENCE] is converted to [BATCH, SEQUENCE, EMBED]
         x = embedding[x]  ## OUTPUT should be [BATCH, SEQUENCE, EMBED]
 
 
@@ -68,7 +79,7 @@ class NNModel(nn.Module):
                 (EMBED_DIM, FF_DIM),
                 jnp.float32,
             )
-            x = embedding[x]
+            x = x @ embedding
         return x
 
 class OurModel(nn.Module):
@@ -86,6 +97,7 @@ class OurModel(nn.Module):
             (VOCAB_DIM, EMBED_DIM),
             jnp.float32,
         )
+        #
         x = embedding[x]  ##OUTPUT should be [BATCH, SEQUENCE, EMBED]
 
         for i in range(LAYERS):
@@ -105,7 +117,9 @@ class OurModel(nn.Module):
             )
             x = x @ embed
             x = jax.nn.relu(x)
-
+        # This will convert [BATCH, SEQUENCE, EMBED] x [EMBED, VOCAB_DIM] = [BATCH, SEQUENCE, VOCAB_DIM]
+        # For every token we are offering some number but not a probabilty without a LOSS FUNCTION.
+        # Loss function + drive graidents.
         return x @ embedding.T
 
 
@@ -139,9 +153,12 @@ def input_to_output(np_array) -> np.ndarray:
     zero_array[:, 1:SEQUENCE_LENGTH] = np_array[:, 0 : SEQUENCE_LENGTH - 1]
     return zero_array
 
-
+# Cross entropy
+# Exponentation of everything, then you do a sum.
+# Each in
 def calculate_loss(params, model, inputs, outputs):
     proposed_outputs = model.apply(params, inputs)
+    # a matrix with one hot 1 and everything else zero. Some magic.
     one_hot = jax.nn.one_hot(outputs, VOCAB_DIM)
     loss = optax.softmax_cross_entropy(proposed_outputs, one_hot)
     return jnp.mean(loss)
@@ -189,7 +206,7 @@ def main():
         y = simple_model.apply(simple_model_params, input)
         # This applies the embedded to our input. aka giving a vector of values to each character.
 
-        print(f"{y}\n{y.shape}")
+        # print(f"{y}\n{y.shape}")
         # 384 (number of batches) x (128) SEQUENCE_LENGTH x (512) EMBEDDING
         # Multilayer Perception: basically we 512 is not "right" to figure which of each character (256 choices).
         # So how do we get there? Using Multilayer Perception: aka doing matrix multiplications that change the layer size.
@@ -199,29 +216,39 @@ def main():
         break
     ####
 
-    # # We need random number generator. Later sessions describe why.
-    # rngkey = jax.random.key(0)
-    # model = OurModel()
-    # # Init the model with random number, something with the right shape, and the data type we are using.
-    # # jnp.empty((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8)) should also work.
-    # _params = model.init(rngkey, jnp.ones((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8))
+    # We need random number generator. Later sessions describe why.
+    rngkey = jax.random.key(0)
+    model = OurModel()
+    # Init the model with random number, something with the right shape, and the data type we are using.
+    # jnp.empty((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8)) should also work.
+    _params = model.init(rngkey, jnp.ones((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8))
+    # print(jax.tree_util.tree_map(lambda x: x.shape, _params))
 
-    # tx = optax.adam(learning_rate = LEARNING_RATE)
-    # state = train_state.TrainState.create(
-    #    apply_fn = model.apply,
-    #    params = _params,
-    #    tx = tx
-    # )
+    # this is a gradient decent optimizer.
+    tx = optax.adam(learning_rate = LEARNING_RATE)
+    # state that represents parameters and loss / optimizer
+    state = train_state.TrainState.create(
+      apply_fn = model.apply,
+      params = _params,
+      tx = tx
+    )
+    # jax is numpy with transformations -- command jax to do calculate loss for us.
+    iter = 0
+    for example in ds:
+      outputs = convert_to_ascii(example['text'].numpy(), SEQUENCE_LENGTH)
+      inputs = input_to_output(outputs)
 
-    # iter = 0
-    # for example in ds:
-    #    outputs = convert_to_ascii(example['text'].numpy(), SEQUENCE_LENGTH)
-    #    inputs = input_to_output(outputs)
+      # This value_and_grad function takes in our loss function, model, parameters and calculates the grad.
+      loss, grad = jax.value_and_grad(calculate_loss)(state.params, model, inputs, outputs)
+      # We apply the grad to our state and reuse it.
+      state = state.apply_gradients(grads = grad)
+      print(f"{iter} -> {loss}")
+      iter += 1
 
-    #    loss, grad = jax.value_and_grad(calculate_loss)(state.params, model, inputs, outputs)
-    #    state = state.apply_gradients(grads = grad)
-    #    print(f"{iter} -> {loss}")
-    #    iter += 1
+      # Questions:
+      # What does "loss" mean
+      # How to use the model in inference
+      # some of the jax code needs some more basic understanding from me by just doing it...
 
 
 if __name__ == "__main__":
