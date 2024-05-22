@@ -10,10 +10,15 @@ def simple_timeit(f, *args, tries = 10, task = None):
 
     trace_name = f"t_{task}_" + ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
     trace_dir = f"/tmp/{trace_name}"
-
-    outcomes_ms = []
-    jax.block_until_ready(f(*args)) #warm it up!
     jax.profiler.start_trace(trace_dir)
+    print(f'Trace Dir: {trace_dir}')
+    outcomes_ms = []
+
+    # Important part is that this is run once between the timing is started.
+    # OK I don't get why we are blocking until ready.
+    # I think this block call is making sure that the HBM has
+    # the initial data, and the functions are compiled.
+    jax.block_until_ready(f(*args)) #warm it up!
 
     for _ in range(tries):
         s = datetime.datetime.now()

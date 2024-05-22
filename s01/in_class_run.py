@@ -55,6 +55,7 @@ class OurSimpleModel(nn.Module):
         x = embedding[x]  ## OUTPUT should be [BATCH, SEQUENCE, EMBED]
         return x
 
+
 # This is an example of creating a first layer convering the embedding into
 # the first layer.
 class NNModel(nn.Module):
@@ -66,7 +67,6 @@ class NNModel(nn.Module):
         # I don't get the purpose of brackets in what math is being done but
         # [BATCH, SEQUENCE] is converted to [BATCH, SEQUENCE, EMBED]
         x = embedding[x]  ## OUTPUT should be [BATCH, SEQUENCE, EMBED]
-
 
         # Q: So since we set the type to jnp.float32, I guess the nn is doing processing
         # in float32.
@@ -81,6 +81,7 @@ class NNModel(nn.Module):
             )
             x = x @ embedding
         return x
+
 
 class OurModel(nn.Module):
 
@@ -153,6 +154,7 @@ def input_to_output(np_array) -> np.ndarray:
     zero_array[:, 1:SEQUENCE_LENGTH] = np_array[:, 0 : SEQUENCE_LENGTH - 1]
     return zero_array
 
+
 # Cross entropy
 # Exponentation of everything, then you do a sum.
 # Each in
@@ -221,34 +223,34 @@ def main():
     model = OurModel()
     # Init the model with random number, something with the right shape, and the data type we are using.
     # jnp.empty((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8)) should also work.
-    _params = model.init(rngkey, jnp.ones((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype = jnp.uint8))
+    _params = model.init(
+        rngkey, jnp.ones((BATCH_IN_SEQUENCES, SEQUENCE_LENGTH), dtype=jnp.uint8)
+    )
     # print(jax.tree_util.tree_map(lambda x: x.shape, _params))
 
     # this is a gradient decent optimizer.
-    tx = optax.adam(learning_rate = LEARNING_RATE)
+    tx = optax.adam(learning_rate=LEARNING_RATE)
     # state that represents parameters and loss / optimizer
-    state = train_state.TrainState.create(
-      apply_fn = model.apply,
-      params = _params,
-      tx = tx
-    )
+    state = train_state.TrainState.create(apply_fn=model.apply, params=_params, tx=tx)
     # jax is numpy with transformations -- command jax to do calculate loss for us.
     iter = 0
     for example in ds:
-      outputs = convert_to_ascii(example['text'].numpy(), SEQUENCE_LENGTH)
-      inputs = input_to_output(outputs)
+        outputs = convert_to_ascii(example["text"].numpy(), SEQUENCE_LENGTH)
+        inputs = input_to_output(outputs)
 
-      # This value_and_grad function takes in our loss function, model, parameters and calculates the grad.
-      loss, grad = jax.value_and_grad(calculate_loss)(state.params, model, inputs, outputs)
-      # We apply the grad to our state and reuse it.
-      state = state.apply_gradients(grads = grad)
-      print(f"{iter} -> {loss}")
-      iter += 1
+        # This value_and_grad function takes in our loss function, model, parameters and calculates the grad.
+        loss, grad = jax.value_and_grad(calculate_loss)(
+            state.params, model, inputs, outputs
+        )
+        # We apply the grad to our state and reuse it.
+        state = state.apply_gradients(grads=grad)
+        print(f"{iter} -> {loss}")
+        iter += 1
 
-      # Questions:
-      # What does "loss" mean
-      # How to use the model in inference
-      # some of the jax code needs some more basic understanding from me by just doing it...
+        # Questions:
+        # What does "loss" mean
+        # How to use the model in inference
+        # some of the jax code needs some more basic understanding from me by just doing it...
 
 
 if __name__ == "__main__":
