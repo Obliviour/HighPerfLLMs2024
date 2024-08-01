@@ -39,14 +39,17 @@ for matrix_dim in MATRIX_DIMS:
             end_time = time.time()
             time_taken += end_time - start_time
         time_taken = time_taken / NUM_TRIES
-        flops_per_s = matrix_dim**3 * 2 / time_taken / 1e12
-        bw_per_s = matrix_dim**2 * 3 * 2 / time_taken / 1e9
-        bw_per_sec = num_bytes = a.size * a.itemsize * 3
+        # How many flops / the per-try time taken
+        # 2 ops (multiple and add), per O(#row^3), MXU is done in units of bf16.
+        compute_flops = matrix_dim**3 * 2
+        tflops_per_s = compute_flops / time_taken / 1e12
+        # How many flops to be passed over bandwidth / per-try time taken
+        # Two Matrixes are passed in + 1 output passed out, and * 2 for bf16.
+        bw_flops = matrix_dim**2 * 3 * 2
+        gbw_per_s = bw_flops / time_taken / 1e9
         print(
-            f"Matrix Dim: {matrix_dim}: Time taken in seconds: {time_taken}, TFLOPS/sec: {flops_per_s}, GBW/sec: {bw_per_s}"
+            f"Matrix Dim: {matrix_dim}: Time taken in seconds: {time_taken}, TFLOPS/sec: {tflops_per_s}, GBW/sec: {gbw_per_s}"
         )
 
 jax.profiler.stop_trace()
 
-
-# On v4 we should see that
