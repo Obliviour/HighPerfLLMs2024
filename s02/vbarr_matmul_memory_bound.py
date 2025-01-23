@@ -7,7 +7,7 @@ import string
 import time
 
 # Try this over below data types
-D_TYPES = [bfloat16, int8, float8_e5m2]
+D_TYPES = [bfloat16, float8_e5m2]
 
 MATRIX_DIMS = [128, 256, 512, 1024, 2048, 2560, 3072, 4096, 5121, 6144, 8192, 16384, 32768, 65536]
 NUM_TRIES = 100
